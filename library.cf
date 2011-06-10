@@ -1,8 +1,14 @@
+#$Id: library.cf,v 1.7 2011/05/03 17:43:20 jg685 Exp $
+
 ################################################################################
 # 
 # Yale Cfengine3 promise body library
 #
 # Defines bodies and bundles for reuse in Yale Cfengine policy.
+#
+# Use tremendous care in editing this file, as it is responsible for the inner 
+# workings of all Cfengine operations at Yale. Any candidates for addition/
+# modification to this file should first be very well-vetted on test clients.
 #
 # Wherever it was reasonable to do so, sets of body types were created as 
 # follows: 
@@ -695,3 +701,100 @@ body classes if_success_failure(yes,no) {
 }
 
 ################################################################################
+#
+# chkconfig bundles
+#
+################################################################################
+
+bundle agent chkconfig_on(service) {
+
+classes:
+
+  "service_is_enabled"
+    expression => returnszero("/sbin/chkconfig --list $(service) 2>&1 | /bin/grep '[0-6]:on' > /dev/null", "useshell");
+
+commands:
+
+  !service_is_enabled::
+
+    "/sbin/chkconfig $(service) on"
+      contain => container_std("root", true),
+      action  => actionsettings_fix_inform_noisylogs("verbose");
+
+}
+
+bundle agent chkconfig_off(service) {
+
+classes:
+
+  "service_is_enabled"
+    expression => returnszero("/sbin/chkconfig --list $(service) 2>&1 | /bin/grep '[0-6]:on' > /dev/null", "useshell");
+
+commands:
+
+  service_is_enabled::
+
+    "/sbin/chkconfig $(service) off"
+      contain => container_std("root", true),
+      action  => actionsettings_fix_inform_noisylogs("verbose");
+
+}
+
+bundle agent chkconfig_add(service) {
+
+classes:
+
+  "service_is_in_chkconfig"
+    expression => returnszero("/sbin/chkconfig --list $(service) > /dev/null 2>&1", "useshell");
+
+commands:
+
+  # Here, we don't test for the existence or validity of /etc/init.d/<service>
+  # chkconfig will error and yell if the init script does not support chkconfig
+  !service_is_in_chkconfig::
+
+    "/sbin/chkconfig --add $(service)"
+      contain => container_std("root", true),
+      action  => actionsettings_fix_inform_noisylogs("verbose");
+
+}
+
+bundle agent chkconfig_del(service) {
+
+classes:
+
+  "service_is_in_chkconfig"
+    expression => returnszero("/sbin/chkconfig --list $(service) > /dev/null 2>&1", "useshell");
+
+commands:
+
+  service_is_in_chkconfig::
+
+    "/sbin/chkconfig --del $(service)"
+      contain => container_std("root", true),
+      action  => actionsettings_fix_inform_noisylogs("verbose");
+
+}
+
+################################################################################
+#
+# Templatization bundles
+#
+################################################################################
+
+# Draw in a template file, agent-side, and expand any cf3 variables embedded
+# in it; write that copy into the promiser of a files promise.
+# Make sure to use the full-featured editsettings body in conjunction with this
+# bundle, to take advantage of "empty_file_before_editing"
+# Note that all vars embedded in the template must be scoped to the bundle they
+# reside in - i.e. $(mybundle.myvar)
+bundle edit_line expand_variables(templatefile) {
+
+insert_lines:
+
+ "$(templatefile)"
+
+   insert_type     => "file",
+   expand_scalars  => "true";
+
+}
