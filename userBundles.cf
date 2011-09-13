@@ -1,0 +1,69 @@
+###############################################################################
+#
+# Add user account to a system, if it doesn't already exist.
+# Copy user's pubkey to authorized_keys{,2} and enforce permissions on them 
+# and the homedir itself.
+#
+# Tested on RHEL3, RHEL5.  Test before applying to any other distro.
+#
+################################################################################
+
+bundle agent createUsers( user ) {
+
+vars:
+
+    # To do local testing on this bundle, set fileserver to localhost
+    # "fileserver" slist => { "localhost" };
+    "fileserver"   slist => { @(var.fileserver) };
+    "prefix"      string => "$(var.masterfiles)/$(group.groupname)/sshdirs/pub";
+
+classes:
+
+  "user_exists" expression => userexists("$(user)");
+
+files:
+
+  user_exists::
+
+    "/home/$(user)/"
+      perms     => mode_owner_group("0700", "$(user)", "$(user)"),
+      action    => actionsettings_fix_inform("inform");
+
+    "/home/$(user)/.ssh/"
+      perms     => mode_owner_group("0700", "$(user)", "$(user)"),
+      action    => actionsettings_fix_inform("inform");
+  
+    "/home/$(user)/.ssh/authorized_keys"
+      copy_from => copy_std("$(prefix)/$(user).ssh/authorized_keys",
+        "@(fileserver)", "false", "timestamp"),
+      perms     => mode_owner_group("0600", "$(user)", "$(user)"),
+      action    => actionsettings_fix_inform("inform");
+
+    # Protects unwanted keys from being injected into sshd user files that we 
+    # don't use; just copy authorized_keys to authorized_keys2, so any poison 
+    # gets overwritten, and notify us
+    "/home/$(user)/.ssh/authorized_keys2"
+      copy_from => copy_std("$(prefix)/$(user).ssh/authorized_keys",
+        "@(fileserver)", "false", "timestamp"),
+      perms     => mode_owner_group("0600", "$(user)", "$(user)"),
+      action    => actionsettings_fix_inform("inform");
+
+reports:
+
+  !user_exists::
+
+    "User $(user) does not exist - attempting to create account.";
+
+commands:
+
+  linux.!user_exists::
+
+    # Back up passwd, shadow and group; add the user
+    "/bin/cp -p /etc/passwd /etc/passwd.$(user).$(sys.cdate) && \
+      /bin/cp -p /etc/shadow /etc/shadow.$(user).$(sys.cdate) && \
+      /bin/cp -p /etc/group /etc/group.$(user).$(sys.cdate) && \
+      /usr/sbin/useradd -u $(userInfo.uids[$(user)]) -c \"$(userInfo.gecos[$(user)])\" -s /bin/bash -m $(user)"
+        action  => actionsettings_fix_inform("inform"),
+        contain => container_std("root", "false");
+
+}

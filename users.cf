@@ -1,0 +1,52 @@
+################################################################################
+#
+# Defines which users belong on which groups of hosts.  Define slist "users"
+# for a group of hosts to cause those users to be created.  Users' UIDs and 
+# GECOS fields should be mapped to their userids in userInfo.cf.
+#
+################################################################################
+
+bundle agent users {
+
+vars:
+
+  # var.dcsunixStaff was not expanding in methods section, so create a 
+  # local copy
+  "dcsunixStaff" slist => { "@(var.dcsunixStaff)" };
+
+  CfgMgtDcs::
+    "users" slist => { "@(dcsunixStaff)", "svn", "aper" };
+
+  mr::
+    "users" slist => { "@(dcsunixStaff)", "rbldns" };
+
+  Omr::
+    "users" slist => { "@(dcsunixStaff)", "operator" };
+
+classes:
+
+  "users_list_is_defined"
+    expression => isvariable("users");
+
+methods:
+
+  users_list_is_defined::
+
+    "set_up_users"
+      usebundle => createUsers( "$(users)" );
+
+  #
+  # Begin user customizations - add to groups, tweak default shells, etc.
+  # 
+
+  CfgMgtDcs::
+    "populate_meanbb"
+      usebundle => addUsersToGroup( "$(dcsunixStaff)", "meanbb");
+
+  Omr::
+    "fix_adm_shell"
+      comment   => "User adm's shell is /sbin/nologin by default.  It's used on these
+        hosts, so change it to something sane.",
+      usebundle => setShell("adm", "/bin/bash");
+
+}

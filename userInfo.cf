@@ -1,0 +1,24 @@
+###############################################################################
+#
+# Table of user account information - maps userid to UID and GECOS fields
+# Used by common/userBundles.cf
+#
+###############################################################################
+
+bundle common userInfo {
+
+vars:
+
+  "uids[rbldns]"    string => "504";
+  "gecos[rbldns]"   string => "rbldns user";
+
+  "uids[svn]"       string => "559";
+  "gecos[svn]"      string => "subversion";
+  
+  "uids[aper]"      string => "571";
+  "gecos[aper]"     string => "aper";
+
+  "uids[alice]"     string => "2000";
+  "gecos[alice]"    string => "Alice Exampleson";
+
+}
