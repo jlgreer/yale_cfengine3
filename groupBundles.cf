@@ -1,0 +1,63 @@
+###############################################################################
+#
+# Add a user to a group, if not already a member.
+#
+# IMPORTANT: this bundle has only been tested against RHEL5.  It is known to 
+# fail at RHEL3, where usermod does not support the "-a" flag for appending, 
+# rather than overwriting, secondary groups to a user account. Test carefully 
+# before applying to anything other than RHEL5.
+#
+###############################################################################
+
+bundle agent addUsersToGroup( user, group ) {
+
+vars:
+
+  "groups_output" 
+    string => execresult("/usr/bin/groups $(user)", "noshell"),
+      policy => "overridable";
+
+classes:
+
+  "user_is_in_group" 
+    expression => regcmp(".*\s*$(group)\s*.*", "$(groups_output)");
+  "group_exists" 
+    expression => returnszero("/usr/bin/getent group $(group) >> /dev/null", 
+      "useshell");
+
+reports:
+
+  group_exists.!user_is_in_group::
+
+    "User $(user) not in $(group) as intended; attempting to fix";
+
+  !group_exists::
+
+    "Group $(group) does not exist; attempting to fix";
+
+
+commands:
+
+  # RHEL 3's usermod doesn't support appending secondary groups; current group 
+  # memberships are stomped if they're not all explicitly passed to usermod.  
+  # Manage RHEL 3 manually.
+
+  redhat_s_5.!user_is_in_group.group_exists::
+  
+    # Back up passwd, shadow and group; add the user
+    "/bin/cp -p /etc/group /etc/group.$(user).$(sys.cdate) && \
+      /usr/sbin/usermod -a -G $(group) $(user)"
+        # This does not work as hoped.  Revisit @ >= v3.1.3 because
+        # of improvements to return code awareness - see kept_returncodes @
+        # http://www.cfengine.org/manuals/cf3-reference.html#classes-in-_002a
+        #classes => if_success_failure("added_user", "failed_to_add_user"),
+        action  => actionsettings_fix_inform("inform"),
+        contain => container_std("root", "false");
+
+  !group_exists::
+    "/bin/cp -p /etc/group /etc/group.$(user).$(sys.cdate) && \
+      /usr/sbin/groupadd -g $(userInfo.uids[$(group)]) $(group)"
+        action  => actionsettings_fix_inform("inform"),
+        contain => container_std("root", "false");
+
+}
