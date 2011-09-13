@@ -1,0 +1,53 @@
+################################################################################
+#
+# Enforce nonstandard attributes for user accounts.
+#
+################################################################################
+
+bundle agent setShell( user, shell ) {
+
+classes:
+
+  any::
+
+    "user_exists" expression => userexists("$(user)");
+
+  user_exists::
+
+    "shell_is_incorrect"
+      not => regcmp( "$(users_current_shell)", "$(shell)" );    
+
+vars:
+
+  user_exists::
+
+    "users_current_shell"
+      string => execresult( 
+        "/usr/bin/getent passwd $(user) | /bin/awk -F: '{ print $7 }'", 
+        "useshell" );
+
+reports:
+
+  shell_is_incorrect::
+    
+    "Shell for user $(user) was set to $(users_current_shell) - attempting to change to $(shell)";
+
+  !user_exists::
+
+    "Attempted to set shell for a nonexistent user $(user)";
+
+commands:
+
+  user_exists.shell_is_incorrect::
+  
+    "/bin/cp -p /etc/passwd /etc/passwd.$(user).$(sys.cdate) && \
+      /usr/sbin/usermod -s $(shell) $(user)"
+        comment => "Back up passwd, shadow and group; add the user",
+        # This does not work as hoped.  Revisit @ >= v3.1.3 because
+        # of improvements to return code awareness - see kept_returncodes @
+        # http://www.cfengine.org/manuals/cf3-reference.html#classes-in-_002a
+        #classes => if_success_failure("changed_shell", "failed_to_change_shell"),
+        action  => actionsettings_fix_inform("inform"),
+        contain => container_std("root", "false");
+
+}
