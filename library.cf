@@ -1,5 +1,3 @@
-#$Id: library.cf,v 1.7 2011/05/03 17:43:20 jg685 Exp $
-
 ################################################################################
 # 
 # Yale Cfengine3 promise body library
@@ -796,5 +794,115 @@ insert_lines:
 
    insert_type     => "file",
    expand_scalars  => "true";
+
+}
+
+################################################################################
+#
+# Package management bodies
+#
+################################################################################
+
+## You *must* specify "package_version" in any promises where this body is used!
+## Otherwise, the version gets set to "*", which causes Cfengine to refer to 
+## the package in terms of package-* (see package_name_convention) - which
+## could install or delete all kinds of packages unintentionally.
+body package_method yum_rpm_exact
+
+{
+  package_changes => "individual";
+  package_list_command => "/bin/rpm -qa --qf '%{name} %{version}-%{release} %{arch}\n'"; 
+
+  package_list_name_regex    => "^(\S+?)\s\S+?\s\S+$";
+  package_list_version_regex => "^\S+?\s(\S+?)\s\S+$";
+  package_list_arch_regex    => "^\S+?\s\S+?\s(\S+)$";
+  # Force list of installed packages to update on every agent run
+  package_list_update_ifelapsed => "0";		
+
+  package_installed_regex => ".*";
+  package_name_convention => "$(name)-$(version).$(arch)";
+
+  package_add_command    => "/usr/bin/yum -y install";
+  package_update_command => "/usr/bin/yum -y update";
+  package_delete_command => "/usr/bin/yum -y erase";
+  package_verify_command => "/bin/rpm -V";
+
+}
+
+## You *must* specify "package_version" in any promises where this body is used!
+## Otherwise, the version gets set to "*", which causes Cfengine to refer to 
+## the package in terms of package-* (see package_name_convention) - which
+## could install or delete all kinds of packages unintentionally.
+body package_method yum_rpm_exact_enablerepo(repo)
+
+{
+  package_changes => "individual";
+  package_list_command => "/bin/rpm -qa --qf '%{name} %{version}-%{release} %{arch}\n'"; 
+
+  package_list_name_regex    => "^(\S+?)\s\S+?\s\S+$";
+  package_list_version_regex => "^\S+?\s(\S+?)\s\S+$";
+  package_list_arch_regex    => "^\S+?\s\S+?\s(\S+)$";
+  # Force list of installed packages to update on every agent run
+  package_list_update_ifelapsed => "0";		
+
+  package_installed_regex => ".*";
+  package_name_convention => "$(name)-$(version).$(arch)";
+
+  package_add_command    => "/usr/bin/yum -y install --enablerepo=$(repo)";
+  package_update_command => "/usr/bin/yum -y update --enablerepo=$(repo)";
+  package_delete_command => "/usr/bin/yum -y erase";
+  package_verify_command => "/bin/rpm -V";
+
+}
+
+## Do not use package_policy "addupdate" or "update" with this body, since 
+## package_name_convention is "$(name)" rather than "$(name)-$(version)" we do 
+## not want "yum -y update wireshark" being run blindly.
+body package_method yum_rpm_byname
+
+{
+  package_changes => "individual";
+  package_list_command => "/bin/rpm -qa --qf '%{name} %{version}-%{release} %{arch}\n'"; 
+
+  package_list_name_regex    => "^(\S+?)\s\S+?\s\S+$";
+  package_list_version_regex => "^\S+?\s(\S+?)\s\S+$";
+  package_list_arch_regex    => "^\S+?\s\S+?\s(\S+)$";
+  # Force list of installed packages to update on every agent run
+  package_list_update_ifelapsed => "0";		
+
+
+  package_installed_regex => ".*";
+  package_name_convention => "$(name)";
+
+  package_add_command    => "/usr/bin/yum -y install";
+  package_update_command => "/usr/bin/yum -y update";
+  package_delete_command => "/usr/bin/yum -y erase";
+  package_verify_command => "/bin/rpm -V";
+
+}
+
+## Do not use package_policy "addupdate" or "update" with this body, since 
+## package_name_convention is "$(name)" rather than "$(name)-$(version)" we do 
+## not want "yum -y update wireshark" being run blindly.
+body package_method yum_rpm_byname_enablerepo(repo)
+
+{
+  package_changes => "individual";
+  package_list_command => "/bin/rpm -qa --qf '%{name} %{version}-%{release} %{arch}\n'"; 
+
+  package_list_name_regex    => "^(\S+?)\s\S+?\s\S+$";
+  package_list_version_regex => "^\S+?\s(\S+?)\s\S+$";
+  package_list_arch_regex    => "^\S+?\s\S+?\s(\S+)$";
+  # Force list of installed packages to update on every agent run
+  package_list_update_ifelapsed => "0";		
+
+
+  package_installed_regex => ".*";
+  package_name_convention => "$(name)";
+
+  package_add_command    => "/usr/bin/yum -y install --enablerepo=$(repo)";
+  package_update_command => "/usr/bin/yum -y update --enablerepo=$(repo)";
+  package_delete_command => "/usr/bin/yum -y erase";
+  package_verify_command => "/bin/rpm -V";
 
 }
