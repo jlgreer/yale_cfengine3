@@ -116,7 +116,7 @@ body edit_defaults editsettings( edit_backup, empty_file_before_editing,
   # Clear it before editing?
   empty_file_before_editing => "$(empty_file_before_editing)";
   # Decline to edit, if size exceeds this, in bytes
-  # Note: Supports orders-of-magnitude shorthand (i.e. "50K")
+  # Note: Supports orders-of-magnitude shorthand (i.e. "100K")
   max_file_size             => "$(max_file_size)";
 
 }
@@ -125,8 +125,51 @@ body edit_defaults editsettings_std( edit_backup ) {
 
   edit_backup               => "$(edit_backup)";
   empty_file_before_editing => "false";
-  max_file_size             => "50K";
+  max_file_size             => "100K";
 
+}
+
+################################################################################
+#
+# edit_fields bodies 
+#
+# Bodies for manipulation of tabulated files.
+#
+################################################################################
+
+body edit_field editfield_settings(allow_blank_fields, extend_fields,
+ field_operation, field_separator, field_value, select_field,
+ start_fields_from_zero, value_separator) {
+  # Allow blank fields in a line (do not purge)?
+  allow_blank_fields     => "$(allow_blank_fields)";
+  # Add new fields at end of line, if necessary, to complete edit
+  extend_fields          => "$(extend_fields)";
+  # The method by which to edit a field in multi-field/column editing of 
+  # tabular files.  See reference guide for options; default is 'append'
+  field_operation        => "$(field_operation)";
+  # Regular expression used to separate fields in a line
+  field_separator        => "$(field_separator)";
+  # Set field to...
+  field_value            => "$(field_value)";
+  # Integer index of field being edited
+  select_field           => "$(select_field)";
+  # First field starts @ 0 instead of 1?  Useful for coordinated iteration
+  # over arrays.
+  start_fields_from_zero => "$(start_fields_from_zero)";
+  # Character separator for subfields inside the selected field
+  # (i.e., ',' in /etc/group, where ':' is the field separator
+  value_separator        => "$(value_separator)";
+}
+
+body edit_field editfield_settings_std(field_separator, select_field,
+ field_value, field_operation) {
+  field_separator    => "$(field_separator)";
+  select_field       => "$(select_field)";
+  value_separator    => ",";
+  field_value        => "$(field_value)";
+  field_operation    => "$(field_operation)";
+  extend_fields      => "true";
+  allow_blank_fields => "true";
 }
 
 ################################################################################
@@ -353,7 +396,7 @@ body action actionsettings_warn_inform( report_level ) {
   action_policy     => "warn";
   expireafter       => "120";
   log_level         => "inform";
-  report_level	    => "$(report_level)";
+  report_level      => "$(report_level)";
 
 }
 
@@ -797,6 +840,59 @@ insert_lines:
 
 }
 
+# Populates $(file).staging based on a template $(file).template at $(prefix) on
+# host $(fileserver).  This bundle is to be used as a tester for bundle
+# template_std - should never be used in production.
+#
+# Use this to stand up $(file).staging client-side; once $(file).staging looks
+# like $(file) should look, switch template_std.
+bundle agent template_staging_std(file, prefix, fileserver, mode, owner, group) {
+
+files:
+
+  "$(file).template"
+    copy_from    => copy_std("$(prefix)$(file).template",
+      "$(fileserver)", "false", "timestamp"),
+    perms        => mode_owner_group("$(mode)", "$(owner)", "$(group)"),
+    action       => actionsettings_fix_inform("inform");
+
+  "$(file).staging"
+    perms         => mode_owner_group("$(mode)", "$(owner)", "$(group)"),
+    create        => "true",
+    edit_line     => expand_variables("$(file).template"),
+    # Using the full-featured body here because we need to empty the file
+    # client-side first.
+    edit_defaults => editsettings("timestamp", "true", "100K"),
+    action        => actionsettings_fix_inform("inform");
+
+}
+
+# Populates $(file) based on a template $(file).template at $(prefix) on host
+# $(fileserver). Note that $(file).template, as well as any Cfengine-created
+# backup copies of $(file) and $(file).template land in the same dir as
+# $(file), so this bundle is inappropriate for use where those files would be
+# grokked by a process (/etc/httpd/conf.d, for example).
+bundle agent template_std(file, prefix, fileserver, mode, owner, group) {
+
+files:
+
+  "$(file).template"
+    copy_from    => copy_std("$(prefix)$(file).template",
+      "$(fileserver)", "false", "timestamp"),
+    perms        => mode_owner_group("$(mode)", "$(owner)", "$(group)"),
+    action       => actionsettings_fix_inform("inform");
+
+  "$(file)"
+    perms         => mode_owner_group("$(mode)", "$(owner)", "$(group)"),
+    create        => "true",
+    edit_line     => expand_variables("$(file).template"),
+    # Using the full-featured body here because we need to empty the file
+    # client-side first.
+    edit_defaults => editsettings("timestamp", "true", "100K"),
+    action        => actionsettings_fix_inform("inform");
+
+}
+
 ################################################################################
 #
 # Package management bodies
@@ -904,5 +1000,46 @@ body package_method yum_rpm_byname_enablerepo(repo)
   package_update_command => "/usr/bin/yum -y update --enablerepo=$(repo)";
   package_delete_command => "/usr/bin/yum -y erase";
   package_verify_command => "/bin/rpm -V";
+
+}
+
+################################################################################
+#
+# Special-purpose bundles
+#
+################################################################################
+
+# Report if a mail server has more than $(threshold) messages in queue
+bundle agent bigq(threshold) {
+
+vars:
+
+  linux::
+
+    # count of live queue
+    "count"
+      string =>
+        execresult("/usr/bin/mailq | /bin/awk -F': ' '/Total requests/{print $2}'",
+          "useshell"),
+        policy => "overridable";
+
+classes:
+
+  linux::
+
+     "q_big" expression => isgreaterthan("$(count)","$(threshold)");
+
+commands:
+
+  linux.q_big::
+
+    "/bin/echo -n \"Thresh: $(threshold).  Count: `/usr/bin/mailq | /bin/awk -F': ' '/Total requests/{print $2}'`\" | /usr/bin/logger -p mail.crit",
+      contain => container_std("root", "false"),
+      # Using full-featured body to extend ifelapsed; don't yell more 
+      # than once every 4 hours
+      # LIBRARY STUB: body action actionsettings( action_policy, ifelapsed,
+      # expireafter, log_level, audit, background, report_level) {
+      action => actionsettings("fix", "240", "120", "inform", "false",
+        "false", "inform");
 
 }
