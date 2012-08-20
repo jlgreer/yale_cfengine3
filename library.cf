@@ -396,7 +396,7 @@ body action actionsettings_warn_inform( report_level ) {
   action_policy     => "warn";
   expireafter       => "120";
   log_level         => "inform";
-  report_level      => "$(report_level)";
+  report_level	    => "$(report_level)";
 
 }
 
@@ -892,6 +892,60 @@ files:
     action        => actionsettings_fix_inform("inform");
 
 }
+
+# Populates $(file) based on a template $(template_file).template at $(prefix) on host
+# $(fileserver). Note that $(template_file).template, as well as any Cfengine-created
+# backup copies of $(file) and $(template_file).template land in the same dir as
+# $(file), so this bundle is inappropriate for use where those files would be
+# grokked by a process (/etc/httpd/conf.d, for example).
+bundle agent template_std_full(template_file, file, prefix, fileserver, mode, owner, group) {
+
+files:
+
+  "$(template_file)"
+    copy_from    => copy_std("$(prefix)$(template_file).template",
+      "$(fileserver)", "false", "timestamp"),
+    perms        => mode_owner_group("$(mode)", "$(owner)", "$(group)"),
+    action       => actionsettings_fix_inform("inform");
+
+  "$(file)"
+    perms         => mode_owner_group("$(mode)", "$(owner)", "$(group)"),
+    create        => "true",
+    edit_line     => expand_variables("$(template_file)"),
+    # Using the full-featured body here because we need to empty the file
+    # client-side first.
+    edit_defaults => editsettings("timestamp", "true", "100K"),
+    action        => actionsettings_fix_inform("inform");
+
+}
+
+# Populates $(file) based on a template $(file).template at $(prefix) on host
+# $(fileserver). 
+#
+# This leaves nothing in dest workdirs on host apart from $(file).
+# No dot-template, no dot-cf-before-edit, no timestamp, no backup are kept there.
+# Dot-templates stashed in /var/cfengine/templates.
+bundle agent template_std_clean(file, prefix, fileserver, mode, owner, group) {
+
+files:
+
+  "/var/cfengine/templates/$(file).template"
+    copy_from    => copy_std("$(prefix)$(file).template",
+      "$(fileserver)", "false", "false"),
+    perms        => mode_owner_group("$(mode)", "$(owner)", "$(group)"),
+    action       => actionsettings_fix_inform("inform");
+
+  "$(file)"
+    perms         => mode_owner_group("$(mode)", "$(owner)", "$(group)"),
+    create        => "true",
+    edit_line     => expand_variables("/var/cfengine/templates/$(file).template"),
+    # Using the full-featured body here because we need to empty the file
+    # client-side first.
+    edit_defaults => editsettings("false", "true", "100K"),
+    action        => actionsettings_fix_inform("inform");
+
+}
+
 
 ################################################################################
 #
